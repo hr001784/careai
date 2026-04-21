@@ -1,0 +1,138 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Care.AI Voice Test Client</title>
+    <style>
+        body { font-family: sans-serif; max-width: 800px; margin: 2rem auto; padding: 0 1rem; line-height: 1.6; }
+        .container { border: 1px solid #ccc; padding: 1.5rem; border-radius: 8px; }
+        .status { margin-bottom: 1rem; font-weight: bold; }
+        .controls { margin-bottom: 1rem; }
+        button { padding: 0.5rem 1rem; cursor: pointer; }
+        #log { background: #f4f4f4; padding: 1rem; height: 300px; overflow-y: auto; border-radius: 4px; font-family: monospace; white-space: pre-wrap; }
+        .user { color: blue; }
+        .ai { color: green; }
+        .error { color: red; }
+    </style>
+</head>
+<body>
+    <h1>Care.AI Voice Test Client</h1>
+    <div class="container">
+        <div class="status" id="status">Status: Disconnected</div>
+        <div class="controls">
+            <button id="connectBtn">Connect WebSocket</button>
+            <label for="langSelect" style="margin-left: 10px;">Language:</label>
+            <select id="langSelect">
+                <option value="en">English</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="ta">Tamil (தமிழ்)</option>
+            </select>
+            <button id="recordBtn" disabled>Start Recording</button>
+            <button id="stopBtn" disabled>Stop Recording</button>
+        </div>
+        <h3>Conversation Log</h3>
+        <div id="log"></div>
+    </div>
+
+    <script>
+        let ws;
+        let mediaRecorder;
+        let audioChunks = [];
+        const statusEl = document.getElementById('status');
+        const logEl = document.getElementById('log');
+        const connectBtn = document.getElementById('connectBtn');
+        const recordBtn = document.getElementById('recordBtn');
+        const stopBtn = document.getElementById('stopBtn');
+
+        function appendLog(text, className) {
+            const div = document.createElement('div');
+            div.className = className;
+            div.textContent = `[${new Date().toLocaleTimeString()}] ${text}`;
+            logEl.appendChild(div);
+            logEl.scrollTop = logEl.scrollHeight;
+        }
+
+        connectBtn.onclick = () => {
+            const host = window.location.hostname || 'localhost';
+            const lang = document.getElementById('langSelect').value;
+            ws = new WebSocket(`ws://${host}:8001/api/v1/ws/voice?lang=${lang}`);
+            ws.binaryType = 'blob'; // Use blob for binary data
+            
+            ws.onopen = () => {
+                statusEl.textContent = 'Status: Connected';
+                connectBtn.disabled = true;
+                recordBtn.disabled = false;
+                appendLog('WebSocket Connected', 'ai');
+            };
+
+            ws.onmessage = (event) => {
+                if (typeof event.data === 'string') {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'error') {
+                        appendLog(`Error: ${data.message}`, 'error');
+                        // Don't disable buttons on non-fatal errors
+                    } else if (data.type === 'status') {
+                        appendLog(`Status: ${data.status}`, 'ai');
+                    } else if (data.type === 'text') {
+                        appendLog(`You said: ${data.transcript} (${data.language})`, 'user');
+                        appendLog(`AI: ${data.response}`, 'ai');
+                    } else if (data.type === 'latency') {
+                        console.log('Latency:', data);
+                    }
+                } else {
+                    // Binary data is audio response from AI
+                    appendLog('Received audio response from AI', 'ai');
+                    const blob = new Blob([event.data], { type: 'audio/mpeg' });
+                    const url = URL.createObjectURL(blob);
+                    const audio = new Audio(url);
+                    audio.play();
+                }
+            };
+
+            ws.onclose = () => {
+                statusEl.textContent = 'Status: Disconnected';
+                connectBtn.disabled = false;
+                recordBtn.disabled = true;
+                stopBtn.disabled = true;
+                appendLog('WebSocket Disconnected', 'error');
+            };
+        };
+
+        recordBtn.onclick = async () => {
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+                mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
+                
+                mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        audioChunks.push(event.data);
+                    }
+                };
+
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    ws.send(audioBlob);
+                    appendLog('Audio sent for processing.', 'ai');
+                };
+
+                mediaRecorder.start();
+                
+                recordBtn.disabled = true;
+                stopBtn.disabled = false;
+                appendLog('Recording started...', 'ai');
+            } catch (err) {
+                appendLog(`Error accessing microphone: ${err.message}`, 'error');
+            }
+        };
+
+        stopBtn.onclick = () => {
+            mediaRecorder.stop();
+            recordBtn.disabled = false;
+            stopBtn.disabled = true;
+            appendLog('Recording stopped.', 'ai');
+        };
+    </script>
+</body>
+</html>

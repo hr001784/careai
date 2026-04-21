@@ -1,0 +1,88 @@
+from fastapi import FastAPI, Request, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.staticfiles import StaticFiles
+import time
+from contextlib import asynccontextmanager
+from dotenv import load_dotenv
+import os
+
+from app.models.database import engine, Base
+from app.models.schemas import User, Doctor, Appointment, DoctorAvailability
+from app.websocket.voice_handler import voice_router
+from app.memory.redis_memory import get_memory
+
+load_dotenv()
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
+    memory = await get_memory()
+    await memory.connect()
+    yield
+    await memory.disconnect()
+
+app = FastAPI(
+    title="Care.AI - Clinical Appointment Booking Voice Agent",
+    description="Real-time multilingual voice AI for clinical appointment booking",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Mount static files directory
+static_path = os.path.join(os.path.dirname(__file__), "../static")
+if not os.path.exists(static_path):
+    os.makedirs(static_path)
+app.mount("/static", StaticFiles(directory=static_path), name="static")
+
+@app.middleware("http")
+async def latency_middleware(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = (time.time() - start_time) * 1000
+    response.headers["X-Process-Time-MS"] = str(round(process_time, 2))
+    return response
+
+app.include_router(voice_router, prefix="/api/v1")
+
+@app.get("/test")
+async def get_test_page():
+    # Absolute path to the test_client.html in the root directory
+    html_path = r"c:\Users\Admin\.cursor\care.ai\test_client.html"
+    if os.path.exists(html_path):
+        return FileResponse(html_path)
+    return {"error": f"Test client not found at {html_path}"}
+
+@app.get("/")
+async def root():
+    return {
+        "service": "Care.AI Voice Agent",
+        "status": "healthy",
+        "version": "1.0.0"
+    }
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "timestamp": time.time()
+    }
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(
+        "app.main:app",
+        host="0.0.0.0",
+        port=int(os.getenv("PORT", 8000)),
+        reload=True
+    )
