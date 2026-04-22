@@ -16,12 +16,27 @@ load_dotenv()
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    memory = await get_memory()
-    await memory.connect()
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("Database initialized.")
+    except Exception as e:
+        print(f"Database initialization warning: {e}")
+        
+    try:
+        memory = await get_memory()
+        # get_memory() already tries to connect and falls back to LocalMemory
+        print("Memory service ready.")
+    except Exception as e:
+        print(f"Memory initialization warning: {e}")
+        
     yield
-    await memory.disconnect()
+    
+    try:
+        memory = await get_memory()
+        await memory.disconnect()
+    except Exception as e:
+        print(f"Cleanup warning: {e}")
 
 app = FastAPI(
     title="Care.AI - Clinical Appointment Booking Voice Agent",

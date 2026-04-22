@@ -11,14 +11,20 @@ class TTSService:
         }
     
     async def synthesize(self, text: str, language: str = "en") -> bytes:
-        lang_code = self.lang_map.get(language, "en")
-        tts = gTTS(text=text, lang=lang_code, slow=False)
-        
-        audio_buffer = io.BytesIO()
-        tts.write_to_fp(audio_buffer)
-        audio_buffer.seek(0)
-        
-        return audio_buffer.read()
+        try:
+            lang_code = self.lang_map.get(language, "en")
+            # Create TTS object
+            tts = gTTS(text=text, lang=lang_code, slow=False)
+            
+            audio_buffer = io.BytesIO()
+            tts.write_to_fp(audio_buffer)
+            audio_buffer.seek(0)
+            
+            return audio_buffer.read()
+        except Exception as e:
+            print(f"TTS Synthesis error: {e}")
+            # Return an empty byte stream or a small silence if gTTS fails
+            return b""
 
 _tts_service: Optional[TTSService] = None
 
