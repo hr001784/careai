@@ -5,7 +5,8 @@ import os
 
 load_dotenv()
 
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql+asyncpg://postgres:postgres@localhost:5432/careai")
+# Use SQLite by default for easier local setup and deployment
+DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///./careai.db")
 
 engine = create_async_engine(DATABASE_URL, echo=True)
 AsyncSessionLocal = sessionmaker(
