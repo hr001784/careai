@@ -56,11 +56,20 @@ app.include_router(voice_router, prefix="/api/v1")
 
 @app.get("/test")
 async def get_test_page():
-    # Absolute path to the test_client.html in the root directory
-    html_path = r"c:\Users\Admin\.cursor\care.ai\test_client.html"
+    # Use relative path that works both locally and on Render
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    # The file was copied to static/index.html during our build/deployment process
+    html_path = os.path.join(current_dir, "../static/index.html")
+    
     if os.path.exists(html_path):
         return FileResponse(html_path)
-    return {"error": f"Test client not found at {html_path}"}
+    
+    # Fallback to looking for test_client.html in the project root
+    root_html_path = os.path.join(current_dir, "../../test_client.html")
+    if os.path.exists(root_html_path):
+        return FileResponse(root_html_path)
+        
+    return {"error": "Test client page not found. Please ensure static/index.html or test_client.html exists."}
 
 @app.get("/")
 async def root():
