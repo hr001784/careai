@@ -22,6 +22,12 @@
         <div class="status" id="status">Status: Disconnected</div>
         <div class="controls">
             <button id="connectBtn">Connect WebSocket</button>
+            <label for="langSelect" style="margin-left: 10px;">Language:</label>
+            <select id="langSelect">
+                <option value="en">English</option>
+                <option value="hi">Hindi (हिन्दी)</option>
+                <option value="ta">Tamil (தமிழ்)</option>
+            </select>
             <button id="recordBtn" disabled>Start Recording</button>
             <button id="stopBtn" disabled>Stop Recording</button>
         </div>
@@ -48,7 +54,11 @@
         }
 
         connectBtn.onclick = () => {
-            ws = new WebSocket('ws://localhost:8000/api/v1/ws/voice');
+            const host = window.location.host; // includes port if present
+            const protocol = window.location.protocol === 'https:' ? 'wss' : 'ws';
+            const lang = document.getElementById('langSelect').value;
+            ws = new WebSocket(`${protocol}://${host}/api/v1/ws/voice?lang=${lang}`);
+            ws.binaryType = 'blob'; // Use blob for binary data
             
             ws.onopen = () => {
                 statusEl.textContent = 'Status: Connected';
@@ -58,15 +68,26 @@
             };
 
             ws.onmessage = (event) => {
-                const data = JSON.parse(event.data);
-                if (data.type === 'status') {
-                    appendLog(`Status: ${data.status}`, 'ai');
-                } else if (data.type === 'transcription') {
-                    appendLog(`You said: ${data.text} (${data.language})`, 'user');
-                } else if (data.type === 'ai_response') {
-                    appendLog(`AI: ${data.text}`, 'ai');
-                } else if (data.type === 'error') {
-                    appendLog(`Error: ${data.message}`, 'error');
+                if (typeof event.data === 'string') {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'error') {
+                        appendLog(`Error: ${data.message}`, 'error');
+                        // Don't disable buttons on non-fatal errors
+                    } else if (data.type === 'status') {
+                        appendLog(`Status: ${data.status}`, 'ai');
+                    } else if (data.type === 'text') {
+                        appendLog(`You said: ${data.transcript} (${data.language})`, 'user');
+                        appendLog(`AI: ${data.response}`, 'ai');
+                    } else if (data.type === 'latency') {
+                        console.log('Latency:', data);
+                    }
+                } else {
+                    // Binary data is audio response from AI
+                    appendLog('Received audio response from AI', 'ai');
+                    const blob = new Blob([event.data], { type: 'audio/mpeg' });
+                    const url = URL.createObjectURL(blob);
+                    const audio = new Audio(url);
+                    audio.play();
                 }
             };
 
@@ -83,15 +104,21 @@
             try {
                 const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
                 mediaRecorder = new MediaRecorder(stream);
+                audioChunks = [];
                 
                 mediaRecorder.ondataavailable = (event) => {
                     if (event.data.size > 0) {
-                        ws.send(event.data);
+                        audioChunks.push(event.data);
                     }
                 };
 
-                // Send audio in chunks every 1 second
-                mediaRecorder.start(1000);
+                mediaRecorder.onstop = () => {
+                    const audioBlob = new Blob(audioChunks, { type: 'audio/wav' });
+                    ws.send(audioBlob);
+                    appendLog('Audio sent for processing.', 'ai');
+                };
+
+                mediaRecorder.start();
                 
                 recordBtn.disabled = true;
                 stopBtn.disabled = false;
