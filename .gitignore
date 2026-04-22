@@ -13,7 +13,7 @@ ENV/
 
 # Models
 backend/models/
-models/
+!backend/app/models/
 
 # Environment
 .env

@@ -71,119 +71,119 @@ async def voice_endpoint(
             })
             
             # STT and logic inside the loop
-             async with AsyncSessionLocal() as db:
-                 # We pass the db session to any tool that needs it later
-                 text, detected_lang = await stt_service.transcribe(data)
-                 stt_time = time.time() - start_time
-                 
-                 if not text or len(text.strip()) < 2:
-                     continue
-                 
-                 # Use detected language but respect session preference if it's not English
-                 # or if detected language seems wrong
-                 session_data = await memory.get_session(session_id)
-                 context = session_data.get("context", {})
-                 pref_lang = context.get("language", "en")
-                 
-                 # Simple logic: if user explicitly chose a language, use it for processing
-                 lang = pref_lang if pref_lang in ["hi", "ta"] else language_detector.detect(text)
-                 
-                 await memory.add_message(session_id, "user", text)
-                 
-                 messages = await memory.get_messages(session_id)
-                 
-                 llm_start = time.time()
-                 llm_response = await llm_agent.process(text, lang, context, messages[:-1])
-                 llm_time = time.time() - llm_start
-                 
-                 tool_result = None
-                 response_text = ""
-                 
-                 if llm_response["action"] == "tool_call":
-                     tool_name = llm_response["tool_name"]
-                     params = llm_response["parameters"]
-                     
-                     try:
-                         print(f"Executing tool: {tool_name} with params: {params}")
-                         if tool_name == "checkAvailability":
-                             doctor_id = params.get("doctor_id", 1)
-                             date_str = params.get("date")
-                             if date_str:
-                                 check_date = datetime.strptime(date_str, "%Y-%m-%d").date()
-                                 tool_result = await check_availability(db, doctor_id, check_date)
-                         
-                         elif tool_name == "bookAppointment":
-                             user_id = params.get("user_id", 1)
-                             doctor_id = params.get("doctor_id", 1)
-                             time_str = params.get("time")
-                             notes = params.get("notes")
-                             if time_str:
-                                 try:
-                                     appt_time = datetime.fromisoformat(time_str)
-                                     tool_result = await book_appointment(db, user_id, doctor_id, appt_time, notes)
-                                 except ValueError as ve:
-                                     print(f"Invalid date format: {time_str}")
-                                     response_text = "Invalid date format provided."
-                             else:
-                                 print("Missing time parameter for booking")
-                         
-                         elif tool_name == "cancelAppointment":
-                             appt_id = params.get("appointment_id")
-                             if appt_id:
-                                 tool_result = await cancel_appointment(db, appt_id)
-                         
-                         elif tool_name == "rescheduleAppointment":
-                             appt_id = params.get("appointment_id")
-                             new_time_str = params.get("new_time")
-                             if appt_id and new_time_str:
-                                 try:
-                                     new_time = datetime.fromisoformat(new_time_str)
-                                     tool_result = await reschedule_appointment(db, appt_id, new_time)
-                                 except ValueError:
-                                     response_text = "Invalid date format provided."
-                         
-                         if tool_result:
-                             response_text = await _format_tool_response(tool_result, lang)
-                         elif not response_text:
-                             response_text = _get_error_message(lang)
-                     
-                     except Exception as e:
-                         print(f"Tool execution error: {e}")
-                         import traceback
-                         traceback.print_exc()
-                         response_text = _get_error_message(lang)
-                 
-                 elif llm_response["action"] == "clarify":
-                     response_text = llm_response["message"]
-                 
-                 else:
-                     response_text = llm_response["message"]
-                 
-                 await memory.add_message(session_id, "assistant", response_text)
-                 
-                 tts_start = time.time()
-                 audio_response = await tts_service.synthesize(response_text, lang)
-                 tts_time = time.time() - tts_start
-                 
-                 total_time = time.time() - start_time
-                 
-                 await websocket.send_json({
-                     "type": "latency",
-                     "stt_ms": round(stt_time * 1000, 2),
-                     "llm_ms": round(llm_time * 1000, 2),
-                     "tts_ms": round(tts_time * 1000, 2),
-                     "total_ms": round(total_time * 1000, 2)
-                 })
-                 
-                 await websocket.send_json({
-                     "type": "text",
-                     "transcript": text,
-                     "response": response_text,
-                     "language": lang,
-                     "session_id": session_id
-                 })
-                 
-                 await websocket.send_bytes(audio_response)
+            async with AsyncSessionLocal() as db:
+                # We pass the db session to any tool that needs it later
+                text, detected_lang = await stt_service.transcribe(data)
+                stt_time = time.time() - start_time
+                
+                if not text or len(text.strip()) < 2:
+                    continue
+                
+                # Use detected language but respect session preference if it's not English
+                # or if detected language seems wrong
+                session_data = await memory.get_session(session_id)
+                context = session_data.get("context", {})
+                pref_lang = context.get("language", "en")
+                
+                # Simple logic: if user explicitly chose a language, use it for processing
+                lang = pref_lang if pref_lang in ["hi", "ta"] else language_detector.detect(text)
+                
+                await memory.add_message(session_id, "user", text)
+                
+                messages = await memory.get_messages(session_id)
+                
+                llm_start = time.time()
+                llm_response = await llm_agent.process(text, lang, context, messages[:-1])
+                llm_time = time.time() - llm_start
+                
+                tool_result = None
+                response_text = ""
+                
+                if llm_response["action"] == "tool_call":
+                    tool_name = llm_response["tool_name"]
+                    params = llm_response["parameters"]
+                    
+                    try:
+                        print(f"Executing tool: {tool_name} with params: {params}")
+                        if tool_name == "checkAvailability":
+                            doctor_id = params.get("doctor_id", 1)
+                            date_str = params.get("date")
+                            if date_str:
+                                check_date = datetime.strptime(date_str, "%Y-%m-%d").date()
+                                tool_result = await check_availability(db, doctor_id, check_date)
+                        
+                        elif tool_name == "bookAppointment":
+                            user_id = params.get("user_id", 1)
+                            doctor_id = params.get("doctor_id", 1)
+                            time_str = params.get("time")
+                            notes = params.get("notes")
+                            if time_str:
+                                try:
+                                    appt_time = datetime.fromisoformat(time_str)
+                                    tool_result = await book_appointment(db, user_id, doctor_id, appt_time, notes)
+                                except ValueError as ve:
+                                    print(f"Invalid date format: {time_str}")
+                                    response_text = "Invalid date format provided."
+                            else:
+                                print("Missing time parameter for booking")
+                        
+                        elif tool_name == "cancelAppointment":
+                            appt_id = params.get("appointment_id")
+                            if appt_id:
+                                tool_result = await cancel_appointment(db, appt_id)
+                        
+                        elif tool_name == "rescheduleAppointment":
+                            appt_id = params.get("appointment_id")
+                            new_time_str = params.get("new_time")
+                            if appt_id and new_time_str:
+                                try:
+                                    new_time = datetime.fromisoformat(new_time_str)
+                                    tool_result = await reschedule_appointment(db, appt_id, new_time)
+                                except ValueError:
+                                    response_text = "Invalid date format provided."
+                        
+                        if tool_result:
+                            response_text = await _format_tool_response(tool_result, lang)
+                        elif not response_text:
+                            response_text = _get_error_message(lang)
+                    
+                    except Exception as e:
+                        print(f"Tool execution error: {e}")
+                        import traceback
+                        traceback.print_exc()
+                        response_text = _get_error_message(lang)
+                
+                elif llm_response["action"] == "clarify":
+                    response_text = llm_response["message"]
+                
+                else:
+                    response_text = llm_response["message"]
+                
+                await memory.add_message(session_id, "assistant", response_text)
+                
+                tts_start = time.time()
+                audio_response = await tts_service.synthesize(response_text, lang)
+                tts_time = time.time() - tts_start
+                
+                total_time = time.time() - start_time
+                
+                await websocket.send_json({
+                    "type": "latency",
+                    "stt_ms": round(stt_time * 1000, 2),
+                    "llm_ms": round(llm_time * 1000, 2),
+                    "tts_ms": round(tts_time * 1000, 2),
+                    "total_ms": round(total_time * 1000, 2)
+                })
+                
+                await websocket.send_json({
+                    "type": "text",
+                    "transcript": text,
+                    "response": response_text,
+                    "language": lang,
+                    "session_id": session_id
+                })
+                
+                await websocket.send_bytes(audio_response)
     
     except WebSocketDisconnect:
         await memory.clear_session(session_id)
