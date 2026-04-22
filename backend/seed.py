@@ -1,4 +1,10 @@
 import asyncio
+import sys
+import os
+
+# Add the current directory to sys.path so 'app' can be found
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
 from datetime import time
 from app.models.database import AsyncSessionLocal, engine, Base
 from app.models.schemas import User, Doctor, DoctorAvailability
